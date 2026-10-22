@@ -1,373 +1,3 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FPV Drone</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#000; font-family:"Consolas","Courier New",monospace; }
-  canvas { display:block; }
-
-  #hud { position:fixed; inset:0; pointer-events:none; color:#8fffb0; text-shadow:0 0 6px rgba(0,255,120,.6); }
-
-  .gauge { position:absolute; font-size:14px; letter-spacing:1px; }
-  #topLeft { top:16px; left:16px; line-height:1.7; }
-  #topRight { top:16px; right:16px; text-align:right; line-height:1.7; max-width:46vw; }
-  #topRight > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #bottom { bottom:70px; left:50%; transform:translateX(-50%); text-align:center; }
-
-  #throttleWrap { position:absolute; left:16px; top:50%; transform:translateY(-50%);
-    width:16px; height:180px; border:2px solid rgba(143,255,176,.7); border-radius:8px; overflow:hidden; }
-  #throttleFill { position:absolute; bottom:0; left:0; width:100%; height:0%;
-    background:linear-gradient(to top,#1d7d3c,#8fffb0); transition:height .05s linear; }
-  #throttleLabel { position:absolute; left:40px; top:50%; transform:translateY(-50%); font-size:12px; }
-
-  #batteryBar { display:inline-block; width:90px; height:9px; border:1px solid #8fffb0; vertical-align:middle; }
-  #batteryFill { display:block; height:100%; background:#8fffb0; width:100%; }
-
-  /* прицел */
-  #cross { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:60px; height:60px; opacity:.85; }
-  #cross:before,#cross:after { content:""; position:absolute; background:#8fffb0; box-shadow:0 0 5px rgba(0,255,120,.8); }
-  #cross:before { left:50%; top:0; width:1px; height:18px; transform:translateX(-50%); }
-  #cross:after  { left:50%; bottom:0; width:1px; height:18px; transform:translateX(-50%); }
-  #crossDot { position:absolute; left:50%; top:50%; width:4px; height:4px; margin:-2px 0 0 -2px;
-    background:#8fffb0; border-radius:50%; box-shadow:0 0 6px #8fffb0; }
-  .tickL,.tickR { position:absolute; top:50%; width:16px; height:1px; background:#8fffb0; }
-  .tickL { left:0; } .tickR { right:0; }
-
-  .overlay { position:fixed; inset:0; background:rgba(4,10,8,.93); display:flex; flex-direction:column;
-    align-items:center; justify-content:safe center; overflow:auto; padding:18px 12px; color:#c9ffe0;
-    text-align:center; z-index:10; }
-  .overlay > * { flex-shrink:0; }
-  .overlay h1 { font-size:42px; letter-spacing:6px; color:#8fffb0; text-shadow:0 0 18px rgba(0,255,120,.6); margin-bottom:4px; }
-  .overlay h2 { font-size:15px; font-weight:normal; opacity:.65; margin-bottom:22px; letter-spacing:3px; }
-  .hidden { display:none !important; }
-
-  .btnRow { display:flex; gap:16px; flex-wrap:wrap; justify-content:center; pointer-events:auto; }
-  .btnCol { display:flex; flex-direction:column; gap:14px; align-items:center; pointer-events:auto; }
-  .overlay button { pointer-events:auto; background:#0e2a19; color:#8fffb0; border:2px solid #8fffb0;
-    padding:14px 46px; font-family:inherit; font-size:18px; letter-spacing:3px; cursor:pointer; border-radius:4px; }
-  .overlay button:hover { background:#8fffb0; color:#04210f; box-shadow:0 0 24px rgba(0,255,120,.5); }
-  .overlay button.secondary { background:transparent; border-color:rgba(143,255,176,.45);
-    color:rgba(143,255,176,.75); font-size:15px; padding:11px 40px; }
-  .overlay button.secondary:hover { background:rgba(143,255,176,.15); color:#8fffb0; box-shadow:none; }
-
-  /* --- сетка меню: карты + управление --- */
-  .menuGrid { display:flex; gap:24px; flex-wrap:wrap; justify-content:center; margin-bottom:24px; }
-  .panel { background:rgba(6,24,14,.55); border:1px solid rgba(143,255,176,.25);
-    border-radius:8px; padding:16px 20px; width:360px; }
-  .panelTitle { color:#8fffb0; letter-spacing:4px; font-size:12px; margin-bottom:14px; opacity:.75; }
-
-  .mapList { display:flex; flex-direction:column; gap:10px; }
-  .mapCard { display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; text-align:left;
-    background:rgba(0,0,0,.35); border:2px solid rgba(143,255,176,.22); color:#c9ffe0;
-    padding:10px 14px; border-radius:6px; cursor:pointer; font-family:inherit; pointer-events:auto; }
-  .mapCard .mapName { letter-spacing:3px; font-size:16px; color:#8fffb0; }
-  .mapCard .mapDesc { font-size:12px; opacity:.6; }
-  .mapCard:hover { border-color:rgba(143,255,176,.7); }
-  .mapCard.selected { border-color:#ffe36e; background:rgba(58,48,10,.45); box-shadow:0 0 16px rgba(255,220,80,.25); }
-  .mapCard.selected .mapName { color:#ffe36e; }
-
-  /* --- панель сложности --- */
-  .diffList { display:flex; flex-direction:column; gap:10px; }
-  .diffRow { display:flex; flex-direction:column; gap:4px; padding:9px 12px; text-align:left;
-    background:rgba(0,0,0,.35); border:2px solid rgba(143,255,176,.22); border-radius:6px;
-    cursor:pointer; pointer-events:auto; font-family:inherit; color:#c9ffe0; width:100%; }
-  .diffRow:hover { border-color:rgba(143,255,176,.7); }
-  .diffRow.selected { border-color:#ffe36e; background:rgba(58,48,10,.45); }
-  .diffTop { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-  .diffName { letter-spacing:3px; font-size:15px; color:#8fffb0; }
-  .diffRow.selected .diffName { color:#ffe36e; }
-  .diffStars { color:#ffe36e; letter-spacing:3px; font-size:14px; }
-  .diffNote { font-size:11px; line-height:1.5; opacity:.6; }
-  .stars { color:#ffe36e; letter-spacing:2px; }
-
-  .keys { display:grid; grid-template-columns:96px 1fr; gap:9px 14px; font-size:14px; text-align:left; align-items:center; }
-  .key { border:1px solid rgba(143,255,176,.6); background:rgba(0,0,0,.45); border-radius:4px;
-    padding:4px 6px; color:#8fffb0; text-align:center; letter-spacing:1px; font-size:12px; }
-  .keys span.desc { opacity:.85; }
-  .hint { margin-top:14px; font-size:12px; line-height:1.6; opacity:.55; }
-
-  @media (max-height: 840px){
-    .overlay h1 { font-size:32px; }
-    .overlay h2 { font-size:13px; margin-bottom:14px; }
-    .menuGrid { gap:16px; margin-bottom:16px; }
-    .panel { width:320px; padding:12px 15px; }
-    .panelTitle { margin-bottom:10px; }
-    .keys { font-size:13px; gap:6px 12px; }
-    .key { font-size:11px; padding:3px 5px; }
-    .diffNote { font-size:10px; }
-    .overlay button { padding:11px 36px; font-size:16px; }
-  }
-  @media (max-width: 1120px){
-    .panel { width:300px; }
-    .keys { font-size:12px; }
-  }
-
-  /* --- магазин скинов --- */
-  .skinTools { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
-  .skinSearch { background:#0e2a19; color:#8fffb0; border:2px solid #8fffb0; font-family:inherit;
-    padding:9px 14px; border-radius:4px; width:280px; font-size:13px; letter-spacing:2px; outline:none; }
-  .skinSearch::placeholder { color:#5f8f74; letter-spacing:1px; }
-  .skinCount { font-size:12px; letter-spacing:2px; opacity:.6; }
-  .skinList { display:grid; grid-template-columns:repeat(2,minmax(270px,1fr)); gap:10px; margin-bottom:14px;
-    width:min(94vw,700px); max-height:52vh; overflow-y:auto; overflow-x:hidden; padding:2px 6px 2px 2px;
-    align-content:start; }
-  .skinList::-webkit-scrollbar { width:8px; }
-  .skinList::-webkit-scrollbar-thumb { background:rgba(143,255,176,.3); border-radius:4px; }
-  .skinRow { display:flex; align-items:center; gap:12px; padding:8px 12px; text-align:left;
-    background:rgba(0,0,0,.35); border:2px solid rgba(143,255,176,.22); border-radius:8px; }
-  .skinRow.equipped { border-color:#ffe36e; background:rgba(58,48,10,.4); }
-  .skinRow.locked .skinName { color:#6f8a7a; }
-  .swatch { width:32px; height:32px; border-radius:7px; border:2px solid rgba(255,255,255,.28); flex:0 0 auto; }
-  .skinInfo { flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
-  .skinName { letter-spacing:2px; font-size:14px; color:#8fffb0; white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; }
-  .skinDesc { font-size:10px; line-height:1.35; opacity:.55; overflow:hidden; text-overflow:ellipsis;
-    white-space:nowrap; }
-  .mult { color:#ffd76a; font-size:12px; letter-spacing:1px; white-space:nowrap; }
-  .skinRow button { background:#0e2a19; color:#8fffb0; border:2px solid #8fffb0; padding:8px 12px;
-    font-family:inherit; font-size:12px; letter-spacing:1px; cursor:pointer; border-radius:4px;
-    pointer-events:auto; white-space:nowrap; }
-  .skinRow button:hover:not(:disabled) { background:#8fffb0; color:#04210f; }
-  .skinRow button:disabled { opacity:.45; cursor:default; }
-  #skinMore { background:#0e2a19; color:#8fffb0; border:2px solid #8fffb0; padding:10px 28px;
-    font-family:inherit; font-size:14px; letter-spacing:2px; cursor:pointer; border-radius:4px;
-    pointer-events:auto; margin-bottom:16px; }
-  #skinMore:hover { background:#8fffb0; color:#04210f; }
-  .coinBalance { font-size:17px; letter-spacing:3px; color:#ffd76a; margin-bottom:16px; }
-  .skinHint { font-size:11px; letter-spacing:2px; opacity:.55; margin-bottom:10px; }
-
-  /* --- настройки --- */
-  .setList { display:flex; flex-direction:column; gap:15px; margin-bottom:26px; min-width:440px;
-    text-align:left; font-size:15px; background:rgba(6,24,14,.55); border:1px solid rgba(143,255,176,.25);
-    border-radius:8px; padding:18px 22px; }
-  .setRow { display:flex; align-items:center; justify-content:space-between; gap:18px;
-    border-bottom:1px solid rgba(143,255,176,.12); padding-bottom:11px; }
-  .setRow:last-child { border-bottom:none; padding-bottom:0; }
-  .setRow .lbl { color:#c9ffe0; letter-spacing:1px; }
-  .setRow .val { color:#8fffb0; min-width:52px; text-align:right; }
-  .setRow input[type=range] { width:160px; accent-color:#30ff9a; cursor:pointer; }
-  .setRow select { background:#0e2a19; color:#8fffb0; border:1px solid #8fffb0; font-family:inherit;
-    padding:5px 10px; border-radius:3px; cursor:pointer; }
-  .setRow input[type=checkbox] { width:20px; height:20px; accent-color:#30ff9a; cursor:pointer; }
-
-  #toast { position:fixed; top:12%; left:50%; transform:translateX(-50%); font-size:26px; color:#ffe36e;
-    text-shadow:0 0 12px rgba(255,220,80,.8); opacity:0; transition:opacity .3s; letter-spacing:4px; z-index:12; }
-  #coinPop { position:fixed; left:50%; top:60%; transform:translateX(-50%); font-size:22px; color:#ffd76a;
-    text-shadow:0 0 12px rgba(255,190,60,.85); opacity:0; transition:opacity .25s, transform .9s ease-out;
-    pointer-events:none; z-index:12; letter-spacing:2px; }
-  #msg { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); font-size:20px; color:#ff6b6b;
-    letter-spacing:3px; text-shadow:0 0 10px rgba(255,80,80,.7); z-index:5; opacity:0; }
-
-  #damage { position:fixed; inset:0; background:radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,.55));
-    opacity:0; transition:opacity .12s; pointer-events:none; z-index:4; }
-
-  #compass { position:absolute; top:16px; left:50%; transform:translateX(-50%); font-size:13px; letter-spacing:2px; }
-  #compassBar { width:280px; height:20px; border:1px solid rgba(143,255,176,.6); position:relative; overflow:hidden;
-    background:rgba(0,20,10,.35); border-radius:3px; }
-  #compassTicks { position:absolute; top:0; left:0; height:100%; white-space:nowrap; line-height:20px; padding-left:140px;
-    font-size:12px; color:#8fffb0; }
-</style>
-</head>
-<body>
-
-<div id="hud">
-  <div id="cross"><div class="tickL"></div><div class="tickR"></div><div id="crossDot"></div></div>
-
-  <div class="gauge" id="topLeft">
-    <div>SPEED <span id="spd">0</span> km/h</div>
-    <div>ALT <span id="alt">0.0</span> m</div>
-    <div>V.S <span id="vs">0.0</span> m/s</div>
-  </div>
-
-  <div class="gauge" id="topRight">
-    <div>БАТАРЕЯ <span id="batteryBar"><span id="batteryFill"></span></span></div>
-    <div>РЕЖИМ <span id="mode">ACRO</span></div>
-    <div>СТАТУС <span id="state">ARMED</span></div>
-    <div>МОНЕТЫ <span id="coins">0</span></div>
-    <div>СКИН <span id="skinHud">СТАНДАРТ</span> <span id="multHud">x1</span></div>
-    <div>ВИД <span id="camModeHud">FPV</span></div>
-  </div>
-
-  <div id="compass"><div id="compassBar"><div id="compassTicks">0° С</div></div></div>
-
-  <div id="throttleWrap"><div id="throttleFill"></div></div>
-  <div class="gauge" id="throttleLabel">THR</div>
-
-  <div class="gauge" id="bottom">
-    КАРТА <span id="mapNameHud">—</span> <span id="mapDiffHud" class="stars"></span> &nbsp;|&nbsp;
-    РИНГ <span id="ringNum">0</span>/<span id="ringTot">0</span> &nbsp;|&nbsp;
-    ВРЕМЯ <span id="timer">0.0</span> с &nbsp;|&nbsp; РЕКОРД <span id="best">—</span>
-  </div>
-</div>
-
-<div id="toast"></div>
-<div id="coinPop"></div>
-<div id="msg"></div>
-<div id="damage"></div>
-
-<!-- ================= ГЛАВНОЕ МЕНЮ ================= -->
-<div class="overlay" id="menu">
-  <h1>FPV DRONE</h1>
-  <h2>ПОЛЁТ ОТ ПЕРВОГО ЛИЦА</h2>
-
-  <div class="menuGrid">
-    <div class="panel">
-      <div class="panelTitle">ВЫБОР КАРТЫ</div>
-      <div class="mapList" id="mapList"></div>
-    </div>
-
-    <div class="panel">
-      <div class="panelTitle">УПРАВЛЕНИЕ</div>
-      <div class="keys">
-        <span class="key">МЫШЬ</span><span class="desc">наклон дрона: вперёд/назад и влево/вправо</span>
-        <span class="key">W / Ц</span><span class="desc">лететь вперёд (нос вниз)</span>
-        <span class="key">S / Ы</span><span class="desc">лететь назад (нос вверх)</span>
-        <span class="key">A / Ф</span><span class="desc">лететь влево</span>
-        <span class="key">D / В</span><span class="desc">лететь вправо</span>
-        <span class="key">E / У</span><span class="desc">мощность выше (больше газа)</span>
-        <span class="key">Q / Й</span><span class="desc">мощность ниже (меньше газа)</span>
-        <span class="key">СТРЕЛКИ</span><span class="desc">то же: ↑ вперёд ↓ назад ← влево → вправо</span>
-        <span class="key">SHIFT</span><span class="desc">турбо-ускорение</span>
-        <span class="key">V</span><span class="desc">вид: от первого лица / от 3-го лица</span>
-        <span class="key">R</span><span class="desc">вернуться на старт (после аварии)</span>
-        <span class="key">M</span><span class="desc">режим ACRO / STAB</span>
-        <span class="key">ESC</span><span class="desc">пауза</span>
-      </div>
-      <div class="hint">Цель: пролетите через все кольца как можно быстрее.<br>
-      ЖЁЛТОЕ кольцо — следующее, ЗЕЛЁНЫЕ — дальше, серые — пройдены.<br>
-      Мышью наклоняйте дрон, клавишами — направление и мощность.<br>
-      За каждое кольцо дают монеты, а скины увеличивают их множитель.</div>
-    </div>
-
-    <div class="panel">
-      <div class="panelTitle">СЛОЖНОСТЬ · <span id="diffMapName">—</span></div>
-      <div class="diffList" id="diffList"></div>
-      <div class="hint">У каждой карты 3 уровня.<br>
-      Чем выше уровень, тем больше колец, они уже, плотнее
-      препятствия, сильнее ветер и быстрее садится батарея.</div>
-    </div>
-  </div>
-
-  <div class="btnRow">
-    <button id="startBtn">ИГРАТЬ</button>
-    <button id="skinsBtn" class="secondary">СКИНЫ</button>
-    <button id="settingsBtn" class="secondary">НАСТРОЙКИ</button>
-  </div>
-</div>
-
-<!-- ================= МАГАЗИН СКИНОВ ================= -->
-<div class="overlay hidden" id="skins">
-  <h1>СКИНЫ</h1>
-  <h2 class="coinBalance">МОНЕТЫ: <span id="coinBalance">0</span></h2>
-  <div class="skinHint" id="skinHint">СКИНЫ · СПИСОК ПО ВОЗРАСТАНИЮ МНОЖИТЕЛЯ</div>
-  <div class="skinTools">
-    <input id="skinSearch" class="skinSearch" type="text" placeholder="ПОИСК" autocomplete="off" spellcheck="false">
-    <span class="skinCount" id="skinCount">0 / 0</span>
-  </div>
-  <div class="skinList" id="skinList"></div>
-  <button id="skinMore">ПОКАЗАТЬ ЕЩЁ</button>
-  <div class="hint" style="margin-bottom:18px; max-width:480px;">
-    За каждое пройденное кольцо даются монеты. Чем дороже скин — тем выше множитель монет.
-    <br>Секретный скин ЛЕГЕНДА x5000 бесплатный: найди в ДОЛИНЕ сломанное дерево с золотым кристаллом.
-  </div>
-  <div class="btnRow">
-    <button id="skinsBack">НАЗАД</button>
-  </div>
-</div>
-
-<!-- ================= НАСТРОЙКИ ================= -->
-<div class="overlay hidden" id="settings">
-  <h1>НАСТРОЙКИ</h1>
-  <div class="setList">
-    <div class="setRow">
-      <span class="lbl">Чувствительность мыши</span>
-      <input type="range" id="setSens" min="0.3" max="2.5" step="0.05">
-      <span class="val" id="setSensVal">1.00</span>
-    </div>
-    <div class="setRow">
-      <span class="lbl">Поле зрения (FOV)</span>
-      <input type="range" id="setFov" min="70" max="120" step="1">
-      <span class="val" id="setFovVal">95°</span>
-    </div>
-    <div class="setRow">
-      <span class="lbl">Инверсия оси Y</span>
-      <input type="checkbox" id="setInvert">
-    </div>
-    <div class="setRow">
-      <span class="lbl">Тряска камеры</span>
-      <input type="checkbox" id="setShake">
-    </div>
-    <div class="setRow">
-      <span class="lbl">Качество графики</span>
-      <select id="setQuality">
-        <option value="low">Низкое</option>
-        <option value="mid">Среднее</option>
-        <option value="high">Высокое</option>
-      </select>
-    </div>
-    <div class="setRow">
-      <span class="lbl">Режим полёта по умолчанию</span>
-      <select id="setMode">
-        <option value="ACRO">ACRO — свободный</option>
-        <option value="STAB">STAB — стабилизация</option>
-      </select>
-    </div>
-  </div>
-  <div class="btnRow">
-    <button id="settingsBack">НАЗАД</button>
-    <button id="settingsReset" class="secondary">СБРОС НАСТРОЕК</button>
-  </div>
-</div>
-
-<!-- ================= ПАУЗА ================= -->
-<div class="overlay hidden" id="pause">
-  <h1>ПАУЗА</h1>
-  <div id="pauseInfo" class="hint" style="margin-bottom:18px; letter-spacing:2px; opacity:.85;"></div>
-  <div class="btnCol">
-    <button id="resumeBtn">ПРОДОЛЖИТЬ</button>
-    <button id="pauseSkins" class="secondary">СКИНЫ</button>
-    <button id="pauseSettings" class="secondary">НАСТРОЙКИ</button>
-    <button id="toMenuBtn" class="secondary">В ГЛАВНОЕ МЕНЮ</button>
-  </div>
-</div>
-
-<script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-</script>
-
-<script type="module">
-import * as THREE from 'three';
-
-/* ================= сцена ================= */
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a1420);
-scene.fog = new THREE.FogExp2(0x0a1420, 0.0075);
-
-const camera = new THREE.PerspectiveCamera(95, innerWidth/innerHeight, 0.08, 2000);
-const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
-
-addEventListener('resize', () => {
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-/* ================= свет ================= */
-const hemi = new THREE.HemisphereLight(0x88aaff, 0x1a2a18, 0.55);
-scene.add(hemi);
-const ambient = new THREE.AmbientLight(0xffffff, 0.22);
-scene.add(ambient);
-const sun = new THREE.DirectionalLight(0xfff2d0, 1.15);
-sun.position.set(120, 180, 60);
-sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 const SD = 260;
 sun.shadow.camera.left=-SD; sun.shadow.camera.right=SD;
@@ -570,7 +200,7 @@ function applySettings(){
 }
 
 /* ================= мир ================= */
-const WORLD = 700;
+const WORLD = 1300;
 const world = new THREE.Group();
 scene.add(world);
 
@@ -865,6 +495,166 @@ function genCanyon(r, o){
   }
 }
 
+function addCactus(x, z, r){
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({ color:0x2f6b3a, roughness:.95 });
+  const h = 3.5 + r()*4;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.45,.55,h,7), m);
+  trunk.position.y = h/2;
+  g.add(trunk);
+  const n = 1 + (r()*3|0);
+  for (let i=0;i<n;i++){
+    const a = r()*Math.PI*2;
+    const y = h*(.35 + r()*.4);
+    const len = 1.4 + r()*1.8;
+    const armG = new THREE.Group();
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(.3,.34,len,6), m);
+    arm.rotation.z = Math.PI/2; arm.position.set(len/2 + .5, 0, 0);
+    const up = new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,len*1.1,6), m);
+    up.position.set(len + .5, len*0.55, 0);
+    armG.add(arm, up);
+    armG.position.set(0, y, 0);
+    armG.rotation.y = -a;
+    g.add(armG);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.position.set(x, 0, z);
+  world.add(g);
+  obstacles.push({ box: new THREE.Box3().setFromObject(g) });
+}
+
+function addPine(x, z, r){
+  const g = new THREE.Group();
+  const bark = new THREE.MeshStandardMaterial({ color:0x3a2a1c, roughness:1 });
+  const pine = new THREE.MeshStandardMaterial({ color:0x1e4a32, roughness:1, flatShading:true });
+  const snowM = new THREE.MeshStandardMaterial({ color:0xf0f6ff, roughness:.9 });
+  const h = 4 + r()*4;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.3,.5,h,6), bark);
+  trunk.position.y = h/2;
+  g.add(trunk);
+  const layers = 3;
+  for (let i=0;i<layers;i++){
+    const t = i/layers;
+    const rad = 3.2 - i*0.85;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(rad, 4.4 - i*0.7, 7), pine);
+    cone.position.y = h*0.55 + i*2.1;
+    g.add(cone);
+    if (i === layers-1){
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(rad*0.75, 2.2, 7), snowM);
+      cap.position.y = h*0.55 + i*2.1 + 1.4;
+      g.add(cap);
+    }
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.position.set(x, 0, z);
+  world.add(g);
+  obstacles.push({ box: new THREE.Box3().setFromObject(g) });
+}
+
+function addCrystal(x, z, s){
+  const mat = new THREE.MeshStandardMaterial({ color:0xbfe6ff, emissive:0x2a6f9a, emissiveIntensity:.5,
+    roughness:.15, metalness:.2, transparent:true, opacity:.85, flatShading:true });
+  const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(s, 0), mat);
+  mesh.position.set(x, s*0.9, z);
+  mesh.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+  mesh.castShadow = true;
+  world.add(mesh);
+  obstacles.push({ box: new THREE.Box3().setFromObject(mesh) });
+}
+
+function addLavaRock(x, z, s){
+  const mat = new THREE.MeshStandardMaterial({ color:0x24100c, emissive:0xff3a00, emissiveIntensity:1.8,
+    roughness:.85, flatShading:true });
+  const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), mat);
+  mesh.position.set(x, s*0.45, z);
+  mesh.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+  mesh.castShadow = mesh.receiveShadow = true;
+  world.add(mesh);
+  obstacles.push({ box: new THREE.Box3().setFromObject(mesh) });
+}
+
+function genDesert(r, o){
+  const dens = o.dens || 1;
+  for (let i=0;i<Math.round(o.dunes*dens);i++){
+    const ang = r()*Math.PI*2, rad = 95 + r()*WORLD*0.55;
+    addHill(Math.cos(ang)*rad, Math.sin(ang)*rad, 40 + r()*70, 10 + r()*26,
+            r() < .5 ? 0xc9a15e : 0xb08a48);
+  }
+  for (let i=0;i<Math.round(o.pillars*dens);i++){
+    const ang = r()*Math.PI*2, rad = 75 + r()*WORLD*0.5;
+    const cx = Math.cos(ang)*rad, cz = Math.sin(ang)*rad;
+    if (Math.hypot(cx, cz) < 65) continue;
+    const h = 25 + r()*85, base = 5 + r()*11;
+    const mat = new THREE.MeshStandardMaterial({ color: r()<.5 ? 0xc09050 : 0xa87840, roughness:1, flatShading:true });
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(base*0.62, base, h, 6, 1), mat);
+    mesh.position.set(cx, h/2, cz);
+    mesh.rotation.y = r()*3;
+    mesh.castShadow = mesh.receiveShadow = true;
+    world.add(mesh);
+    obstacles.push({ box: new THREE.Box3().setFromObject(mesh) });
+  }
+  for (let i=0;i<Math.round(o.cacti*dens);i++){
+    const ang = r()*Math.PI*2, rad = 55 + r()*WORLD*0.5;
+    addCactus(Math.cos(ang)*rad, Math.sin(ang)*rad, r);
+  }
+  for (let i=0;i<Math.round(o.rocks*dens);i++){
+    const ang = r()*Math.PI*2, rad = 60 + r()*WORLD*0.45;
+    addRock(Math.cos(ang)*rad, Math.sin(ang)*rad, 1.5 + r()*3.5, 0x9a7a4a);
+  }
+}
+
+function genSnow(r, o){
+  const dens = o.dens || 1;
+  for (let i=0;i<Math.round(o.hills*dens);i++){
+    const ang = r()*Math.PI*2, rad = 105 + r()*WORLD*0.55;
+    addHill(Math.cos(ang)*rad, Math.sin(ang)*rad, 35 + r()*60, 12 + r()*28,
+            r() < .5 ? 0xeaf2fa : 0xd4e4f2);
+  }
+  for (let i=0;i<Math.round(o.pines*dens);i++){
+    const ang = r()*Math.PI*2, rad = 48 + r()*WORLD*0.55;
+    const x = Math.cos(ang)*rad, z = Math.sin(ang)*rad;
+    if (Math.hypot(x, z) < 48) continue;
+    addPine(x, z, r);
+  }
+  for (let i=0;i<Math.round(o.crystals*dens);i++){
+    const ang = r()*Math.PI*2, rad = 65 + r()*WORLD*0.45;
+    addCrystal(Math.cos(ang)*rad, Math.sin(ang)*rad, 2 + r()*5);
+  }
+  for (let i=0;i<Math.round(o.drifts*dens);i++){
+    const ang = r()*Math.PI*2, rad = 55 + r()*WORLD*0.5;
+    addRock(Math.cos(ang)*rad, Math.sin(ang)*rad, 1.5 + r()*3, 0xdfeaf4);
+  }
+}
+
+function genVolcano(r, o){
+  const dens = o.dens || 1;
+  for (let i=0;i<Math.round(o.spires*dens);i++){
+    const ang = r()*Math.PI*2, rad = 80 + r()*WORLD*0.5;
+    const cx = Math.cos(ang)*rad, cz = Math.sin(ang)*rad;
+    if (Math.hypot(cx, cz) < 65) continue;
+    const h = 22 + r()*80, base = 6 + r()*13;
+    const mat = new THREE.MeshStandardMaterial({ color: r()<.5 ? 0x241c1a : 0x161110, roughness:1, flatShading:true });
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(base*0.4, base, h, 6, 1), mat);
+    mesh.position.set(cx, h/2, cz);
+    mesh.rotation.y = r()*3;
+    mesh.castShadow = mesh.receiveShadow = true;
+    world.add(mesh);
+    obstacles.push({ box: new THREE.Box3().setFromObject(mesh) });
+  }
+  for (let i=0;i<Math.round(o.lava*dens);i++){
+    const ang = r()*Math.PI*2, rad = 70 + r()*WORLD*0.45;
+    addLavaRock(Math.cos(ang)*rad, Math.sin(ang)*rad, 1.8 + r()*4);
+  }
+  for (let i=0;i<Math.round(o.rocks*dens);i++){
+    const ang = r()*Math.PI*2, rad = 55 + r()*WORLD*0.5;
+    addRock(Math.cos(ang)*rad, Math.sin(ang)*rad, 2 + r()*5, 0x2a2422);
+  }
+  for (let i=0;i<Math.round(o.trees*dens);i++){
+    const ang = r()*Math.PI*2, rad = 60 + r()*WORLD*0.45;
+    addTree(Math.cos(ang)*rad, Math.sin(ang)*rad, r, 0x191614);
+  }
+}
+
 /* ---------- карты (у каждой 3 уровня сложности) ---------- */
 const starsOf = d => '★'.repeat(d) + '☆'.repeat(3 - d);
 
@@ -938,757 +728,3 @@ function buildCourse(r){
     const ang = phase + t*Math.PI*spiral;
     const rad = Math.min(470, baseR + Math.sin(t*Math.PI*2.2 + phase)*140 + t*70);
     const y = Math.max(7, Math.min(140, 12 + Math.sin(t*Math.PI*3.4 + phase)*26 + t*24));
-    pts.push(new THREE.Vector3(Math.cos(ang)*rad, y, Math.sin(ang)*rad));
-  }
-  pts.forEach((p, i) => {
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(RR, RR*0.085, 10, 44),
-                                i === 0 ? ringMatNext() : ringMat());
-    mesh.position.copy(p);
-    const next = pts[(i+1) % pts.length];
-    mesh.lookAt(p.clone().add(next.clone().sub(p).normalize()));
-    mesh.castShadow = true;
-    world.add(mesh);
-
-    if (p.y < 30){
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.25,.25, p.y, 6),
-        new THREE.MeshStandardMaterial({ color:0x556677, roughness:.9 }));
-      pole.position.set(p.x, p.y/2, p.z);
-      pole.castShadow = true;
-      world.add(pole);
-    }
-    RINGS.push({ mesh, pos:p.clone(), passed:false, idx:i, r:RR });
-  });
-}
-
-/* ---------- сборка карты ---------- */
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(WORLD*3, WORLD*3, 1, 1),
-  new THREE.MeshStandardMaterial({ color:0xffffff, roughness:1 })
-);
-ground.rotation.x = -Math.PI/2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-let currentMap = MAPS[0];
-let currentLvl = { ...MAPS[0].levels[1], idx:1 };
-
-function buildMap(map, li){
-  currentMap = map;
-  const idx = Math.min(Math.max(li|0, 0), map.levels.length - 1);
-  const L = map.levels[idx];
-  currentLvl = { ...L, idx };
-  clearWorld();
-
-  scene.background = new THREE.Color(map.sky);
-  scene.fog.color.set(map.fogC);
-  scene.fog.density = map.fogD * (L.fog || 1);
-  hemi.color.set(map.hemi[0]); hemi.groundColor.set(map.hemi[1]); hemi.intensity = map.hemi[2];
-  sun.color.set(map.sun[0]); sun.intensity = map.sun[1];
-
-  if (ground.material.map) ground.material.map.dispose();
-  ground.material.dispose();
-  ground.material = new THREE.MeshStandardMaterial({
-    map: makeGroundTex(map.ground[0], map.ground[1], map.ground[2]), roughness:1 });
-
-  const grid = new THREE.GridHelper(WORLD*3, 120, map.grid, map.grid);
-  grid.position.y = 0.05;
-  grid.material.opacity = .3; grid.material.transparent = true;
-  world.add(grid);
-
-  if (map.stars) world.add(addStars());
-
-  const r = rngFor(map.seed);
-  map.build(r, L.dens || 1);
-  SECRET = null;
-  if (map.id === 'valley') addSecret(rngFor(map.seed + 4242));
-  buildCourse(r);
-  addStartPad();
-
-  const hudMap = document.getElementById('mapNameHud');
-  if (hudMap) hudMap.textContent = map.name;
-  const hudDiff = document.getElementById('mapDiffHud');
-  if (hudDiff) hudDiff.textContent = starsOf(L.stars) + ' ' + L.name;
-  renderer.shadowMap.needsUpdate = true;
-  updateHud();
-}
-
-/* ================= дрон ================= */
-let drone = null;
-
-function makeDrone(skin){
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color:skin.body, roughness:skin.rough, metalness:skin.metal });
-  const armMat  = new THREE.MeshStandardMaterial({ color:skin.arm, roughness:.6, metalness:.4 });
-  const ledMat  = new THREE.MeshStandardMaterial({ color:skin.led, emissive:skin.led, emissiveIntensity:3 });
-  const accMat  = new THREE.MeshStandardMaterial({ color:skin.accent, emissive:skin.glow,
-    emissiveIntensity: skin.glow ? 2.2 : 0, roughness:.35, metalness:.5 });
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(.55,.16,.75), bodyMat);
-  const cam = new THREE.Mesh(new THREE.BoxGeometry(.18,.14,.16),
-    new THREE.MeshStandardMaterial({ color:0x0a0a0a, roughness:.4 }));
-  cam.position.set(0,-.06,.42);
-  const led = new THREE.Mesh(new THREE.BoxGeometry(.3,.05,.05), ledMat);
-  led.position.set(0,.05,-.4);
-  const stripeTop = new THREE.Mesh(new THREE.BoxGeometry(.57,.022,.2), accMat);
-  stripeTop.position.set(0,.088,0);
-  const stripeBot = new THREE.Mesh(new THREE.BoxGeometry(.57,.022,.12), accMat);
-  stripeBot.position.set(0,-.088,0);
-  g.add(body, cam, led, stripeTop, stripeBot);
-
-  // моторы и кронштейны (без видимых лопастей)
-  [[.42,.36],[-.42,.36],[.42,-.36],[-.42,-.36]].forEach(([x,z]) => {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(.1,.07,.5), armMat);
-    arm.position.set(x/2, 0, z/2);
-    arm.lookAt(new THREE.Vector3(x, 0, z));
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.1,8), armMat);
-    hub.position.set(x, .06, z);
-    g.add(arm, hub);
-  });
-  return g;
-}
-
-function equipSkin(id){
-  const skin = SKINS.find(s => s.id === id) || SKINS[0];
-  if (drone){ scene.remove(drone); disposeObject(drone); }
-  drone = makeDrone(skin);
-  scene.add(drone);
-  if (state){
-    drone.position.copy(state.pos);
-    drone.quaternion.setFromEuler(new THREE.Euler(state.pitch, state.yaw, state.roll, 'YXZ'));
-  }
-  state.skin = skin;
-  state.skinMult = skin.mult;
-}
-
-const EYE = new THREE.Vector3(0, 0.04, 0.46);
-const q180Y = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), Math.PI);
-
-/* ================= состояние ================= */
-const START = new THREE.Vector3(0, 1.4, 0);
-const HOVER_THR = 0.45;   // мощность, на которой дрон зависает
-const state = {
-  pos: START.clone(),
-  vel: new THREE.Vector3(),
-  yaw:0, pitch:0, roll:0,
-  throttle:0,
-  battery:100,
-  mode:'ACRO',
-  crashed:false,
-  started:false,
-  time:0,
-  ringIdx:0,
-  skin: SKINS[0],
-  skinMult: 1,
-  camMode: 'FPV',
-};
-
-equipSkin(getSkinId());
-
-const keys = {};
-let mouseDX = 0, mouseDY = 0;
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-
-addEventListener('keydown', e => {
-  keys[e.code] = true;
-  if (e.code === 'KeyR' && state.started) resetDrone();
-  if (e.code === 'KeyM' && state.started){
-    state.mode = state.mode === 'ACRO' ? 'STAB' : 'ACRO';
-    toast(state.mode);
-  }
-  if (e.code === 'KeyV' && state.started){
-    state.camMode = state.camMode === 'FPV' ? 'CHASE' : 'FPV';
-    toast(state.camMode === 'FPV' ? 'ВИД: FPV' : 'ВИД: 3-Е ЛИЦО');
-  }
-  if (e.code === 'Escape'){
-    if (!$('skins').classList.contains('hidden')){ closeSkins(); return; }
-    if (!$('settings').classList.contains('hidden')){ closeSettings(); return; }
-    if (state.started && !state.crashed) pauseGame();
-  }
-});
-addEventListener('keyup', e => keys[e.code] = false);
-
-addEventListener('mousemove', e => {
-  if (document.pointerLockElement === renderer.domElement){
-    mouseDX += e.movementX;
-    mouseDY += e.movementY * (SET.invertY ? -1 : 1);
-  }
-});
-
-const bestKey = () => 'fpv_best_' + currentMap.id + '_' + currentLvl.idx;
-
-function resetDrone(){
-  state.pos.copy(START); state.vel.set(0,0,0);
-  state.yaw = 0; state.pitch = 0; state.roll = 0;
-  state.throttle = HOVER_THR; state.crashed = false;
-  state.battery = 100;
-  state.ringIdx = 0;
-  tgtPitch = 0; tgtRoll = 0;
-  RINGS.forEach(r => {
-    r.passed = false;
-    r.mesh.scale.setScalar(1);
-    r.mesh.material.dispose();
-    r.mesh.material = r.idx === 0 ? ringMatNext() : ringMat();
-  });
-  $('msg').style.opacity = 0;
-  updateHud();
-}
-
-/* ================= управление ================= */
-const eul = new THREE.Euler(0,0,0,'YXZ');
-let tgtPitch = 0, tgtRoll = 0;   // целевые углы для режима STAB
-
-function updateInput(dt){
-  const scale = sens * (state.mode === 'ACRO' ? 1 : 0.75);
-  const mdX = mouseDX, mdY = mouseDY;
-  mouseDX = mouseDY = 0;
-
-  const kFwd   = (keys['KeyW'] || keys['ArrowUp'])    ? 1 : 0;
-  const kBack  = (keys['KeyS'] || keys['ArrowDown'])  ? 1 : 0;
-  const kLeft  = (keys['KeyA'] || keys['ArrowLeft'])  ? 1 : 0;
-  const kRight = (keys['KeyD'] || keys['ArrowRight']) ? 1 : 0;
-  const dirPitch = kFwd - kBack;    // +1 = вперёд (нос вниз)
-  const dirRoll  = kRight - kLeft;  // +1 = вправо (наклон вправо)
-
-  if (state.mode === 'ACRO'){
-    state.pitch += dirPitch * 1.8 * dt;
-    state.roll  += dirRoll  * 2.1 * dt;
-    state.pitch -= mdY * scale;
-    state.roll  += mdX * scale;
-    state.yaw   -= mdX * scale * 0.2;
-  } else {
-    if (mdX || mdY){
-      tgtPitch = THREE.MathUtils.clamp(tgtPitch - mdY * scale * 1.6, -0.8, 0.8);
-      tgtRoll  = THREE.MathUtils.clamp(tgtRoll  + mdX * scale * 1.6, -0.8, 0.8);
-    }
-    if (dirPitch || dirRoll){
-      tgtPitch = THREE.MathUtils.clamp(tgtPitch + dirPitch * 1.3 * dt, -0.8, 0.8);
-      tgtRoll  = THREE.MathUtils.clamp(tgtRoll  + dirRoll  * 1.4 * dt, -0.8, 0.8);
-    }
-    if (!dirPitch && !dirRoll){
-      tgtPitch *= (1 - Math.min(1, dt*1.5));
-      tgtRoll  *= (1 - Math.min(1, dt*1.5));
-    }
-    const k = Math.min(1, dt*7);
-    state.pitch += (tgtPitch - state.pitch) * k;
-    state.roll  += (tgtRoll  - state.roll)  * k;
-    state.yaw   -= mdX * scale;
-  }
-
-  // мощность (газ): E/У — выше, Q/Й — ниже
-  if (keys['KeyE']) state.throttle = Math.min(1, state.throttle + dt*1.1);
-  if (keys['KeyQ']) state.throttle = Math.max(0, state.throttle - dt*1.1);
-
-  if (keys['KeyA']) state.yaw += 1.4*dt;
-  if (keys['KeyD']) state.yaw -= 1.4*dt;
-
-  state.pitch = THREE.MathUtils.clamp(state.pitch, -1.25, 1.25);
-  state.roll  = THREE.MathUtils.clamp(state.roll,  -1.25, 1.25);
-}
-
-/* ================= физика ================= */
-const tmpU = new THREE.Vector3();
-let hitFlash = 0;
-
-function physics(dt){
-  eul.set(state.pitch, state.yaw, state.roll, 'YXZ');
-  drone.quaternion.setFromEuler(eul);
-
-  tmpU.set(0,1,0).applyQuaternion(drone.quaternion);
-
-  const turbo = keys['ShiftLeft'] || keys['ShiftRight'];
-  const thr = state.throttle * (turbo ? 1.45 : 1);
-
-  const accel = new THREE.Vector3();
-  accel.addScaledVector(tmpU, thr * 34);
-  accel.addScaledVector(state.vel, -0.55);
-  accel.y -= 13.5;
-  const wind = currentLvl.wind || 0;
-  accel.x += Math.sin(state.time*0.35)*0.6*wind;
-  accel.z += Math.cos(state.time*0.27)*0.5*wind;
-  state.vel.addScaledVector(accel, dt);
-
-  const maxSpd = turbo ? 62 : 46;
-  if (state.vel.length() > maxSpd) state.vel.setLength(maxSpd);
-
-  state.pos.addScaledVector(state.vel, dt);
-
-  if (state.pos.y < 1.0){
-    state.pos.y = 1.0;
-    if (state.vel.y < -9) crash('УДАРЕНИЕ О ЗЕМЛЮ');
-    state.vel.y = Math.max(0, state.vel.y);
-    state.vel.x *= 0.9; state.vel.z *= 0.9;
-  }
-  if (state.pos.y > 260){ state.pos.y = 260; state.vel.y = Math.min(0, state.vel.y); }
-
-  const r = 0.75;
-  for (const o of obstacles){
-    const b = o.box;
-    if (state.pos.x+r > b.min.x && state.pos.x-r < b.max.x &&
-        state.pos.y+r > b.min.y && state.pos.y-r < b.max.y &&
-        state.pos.z+r > b.min.z && state.pos.z-r < b.max.z){
-      const dx1 = b.max.x - (state.pos.x-r), dx2 = (state.pos.x+r) - b.min.x;
-      const dy1 = b.max.y - (state.pos.y-r), dy2 = (state.pos.y+r) - b.min.y;
-      const dz1 = b.max.z - (state.pos.z-r), dz2 = (state.pos.z+r) - b.min.z;
-      const m = Math.min(dx1,dx2,dy1,dy2,dz1,dz2);
-      if (m === dy1){ state.pos.y = b.max.y + r; state.vel.y = Math.abs(state.vel.y)*0.25; }
-      else if (m === dy2){ state.pos.y = b.min.y - r; state.vel.y = -Math.abs(state.vel.y)*0.25; }
-      else if (m === dx1){ state.pos.x = b.max.x + r; state.vel.x = Math.abs(state.vel.x)*0.3; }
-      else if (m === dx2){ state.pos.x = b.min.x - r; state.vel.x = -Math.abs(state.vel.x)*0.3; }
-      else if (m === dz1){ state.pos.z = b.max.z + r; state.vel.z = Math.abs(state.vel.z)*0.3; }
-      else { state.pos.z = b.min.z - r; state.vel.z = -Math.abs(state.vel.z)*0.3; }
-
-      const impact = state.vel.length();
-      state.vel.multiplyScalar(0.45);
-      if (impact > 16) crash('СТОЛКНОВЕНИЕ');
-      else { hitFlash = 1; navigator.vibrate?.(60); }
-      break;
-    }
-  }
-
-  const L = WORLD*0.95;
-  if (Math.abs(state.pos.x) > L){ state.pos.x = THREE.MathUtils.clamp(state.pos.x,-L,L); state.vel.x *= -0.4; hitFlash = 1; }
-  if (Math.abs(state.pos.z) > L){ state.pos.z = THREE.MathUtils.clamp(state.pos.z,-L,L); state.vel.z *= -0.4; hitFlash = 1; }
-
-  state.battery = Math.max(0, state.battery - dt*(0.55 + state.throttle*0.85 + (turbo?1.2:0)) * (currentLvl.drain || 1));
-  if (state.battery <= 0 && !state.crashed) crash('БАТАРЕЯ РАЗРЯЖЕНА');
-
-  drone.position.copy(state.pos);
-}
-
-function crash(text){
-  if (state.crashed) return;
-  state.crashed = true;
-  const m = $('msg');
-  m.textContent = text + ' — нажми R';
-  m.style.opacity = 1;
-  hitFlash = 1;
-  navigator.vibrate?.(200);
-  toast('CRASH');
-}
-
-/* ================= кольца ================= */
-function checkRings(){
-  const cur = RINGS[state.ringIdx];
-  if (!cur || state.crashed) return;
-  if (state.pos.distanceTo(cur.pos) < cur.r - 0.4){
-    cur.passed = true;
-    cur.mesh.material.dispose();
-    cur.mesh.material = new THREE.MeshStandardMaterial({
-      color:0x557799, emissive:0x224466, emissiveIntensity:.6, transparent:true, opacity:.45 });
-    state.ringIdx++;
-    navigator.vibrate?.(30);
-
-    const gain = Math.round(RING_COINS * state.skinMult);
-    addCoins(gain);
-    coinPop('+' + fmtMoney(gain) + ' МОНЕТ');
-
-    if (state.ringIdx >= RINGS.length){
-      const t = state.time.toFixed(1);
-      const best = parseFloat(localStorage.getItem(bestKey()) || '0');
-      const isBest = !best || state.time < best;
-      if (isBest) localStorage.setItem(bestKey(), state.time.toFixed(1));
-      const bonus = Math.round(FINISH_COINS * state.skinMult);
-      addCoins(bonus);
-      toast('ФИНИШ! ' + t + ' с' + (isBest ? ' — РЕКОРД!' : '') + '  +' + fmtMoney(gain + bonus) + ' МОНЕТ');
-      setTimeout(() => resetDrone(), 2200);
-    } else {
-      toast('РИНГ ' + state.ringIdx + '/' + RINGS.length);
-      RINGS[state.ringIdx].mesh.material.dispose();
-      RINGS[state.ringIdx].mesh.material = ringMatNext();
-    }
-    updateHud();
-  }
-}
-
-/* ================= секретный скин ================= */
-function checkSecret(){
-  if (!SECRET || SECRET.taken || state.crashed) return;
-  const d = state.pos.distanceTo(SECRET.pos);
-  if (d < 80 && !SECRET.hinted){ SECRET.hinted = true; toast('ГДЕ-ТО СВЕТИТСЯ...'); }
-  if (d < 5){
-    SECRET.taken = true;
-    SECRET.group.visible = false;
-    const owned = getOwned();
-    if (!owned.includes('sk52')){ owned.push('sk52'); setOwned(owned); }
-    setSkinId('sk52');
-    equipSkin('sk52');
-    toast('НАЙДЕН СЕКРЕТНЫЙ СКИН: ЛЕГЕНДА x5000!');
-    coinPop('ЛЕГЕНДА x5000');
-    if (typeof refreshSkinShop === 'function') refreshSkinShop();
-    updateHud();
-  }
-}
-
-function animateSecret(dt){
-  if (!SECRET || SECRET.taken) return;
-  const t = state.time;
-  SECRET.shard.rotation.y += dt*1.6;
-  SECRET.shard.rotation.x = Math.sin(t*1.2)*.25;
-  SECRET.shard.position.y = 6.8 + Math.sin(t*1.7)*.45;
-  SECRET.halo.rotation.z += dt*.9;
-  SECRET.halo.position.y = SECRET.shard.position.y;
-}
-
-/* ================= HUD ================= */
-const $ = id => document.getElementById(id);
-let hudAcc = 0;
-
-function updateHud(){
-  const speed = state.vel.length() * 3.6;
-  $('spd').textContent = speed.toFixed(0);
-  $('alt').textContent = Math.max(0, state.pos.y - 1).toFixed(1);
-  $('vs').textContent = (state.vel.y >= 0 ? '+' : '') + state.vel.y.toFixed(1);
-  $('throttleFill').style.height = (state.throttle*100).toFixed(0) + '%';
-  $('batteryFill').style.width = state.battery.toFixed(0) + '%';
-  $('batteryFill').style.background = state.battery < 20 ? '#ff5a5a' : '#8fffb0';
-  $('mode').textContent = state.mode;
-  $('state').textContent = state.crashed ? 'FAIL' : 'ARMED';
-  $('state').style.color = state.crashed ? '#ff6b6b' : '#8fffb0';
-  $('ringNum').textContent = Math.min(state.ringIdx, RINGS.length);
-  $('ringTot').textContent = RINGS.length;
-  $('timer').textContent = state.time.toFixed(1);
-  $('coins').textContent = fmtMoney(getCoins());
-  $('skinHud').textContent = state.skin ? state.skin.name : '—';
-  $('multHud').textContent = 'x' + fmtNum(state.skin ? state.skin.mult : 1);
-  $('camModeHud').textContent = state.camMode === 'CHASE' ? '3-е ЛИЦО' : 'FPV';
-  const best = localStorage.getItem(bestKey());
-  $('best').textContent = best ? best + ' с' : '—';
-
-  const pinfo = $('pauseInfo');
-  if (pinfo) pinfo.textContent = `КАРТА: ${currentMap.name}  ${starsOf(currentLvl.stars)} ${currentLvl.name}   •   МОНЕТЫ: ${fmtMoney(getCoins())}`;
-
-  const deg = ((-state.yaw * 180/Math.PI) % 360 + 360) % 360;
-  const dirs = ['С','СВ','В','ЮВ','Ю','ЮЗ','З','СЗ'];
-  $('compassTicks').textContent = `${deg.toFixed(0)}° ${dirs[Math.round(deg/45) % 8]}`;
-}
-
-function toast(text){
-  const t = $('toast');
-  t.textContent = text; t.style.opacity = 1;
-  clearTimeout(t._h);
-  t._h = setTimeout(() => t.style.opacity = 0, 1500);
-}
-
-function coinPop(text){
-  const c = $('coinPop');
-  c.textContent = text;
-  c.style.opacity = 1;
-  c.style.transform = 'translateX(-50%) translateY(0)';
-  clearTimeout(c._h);
-  requestAnimationFrame(() => { c.style.transform = 'translateX(-50%) translateY(-46px)'; });
-  c._h = setTimeout(() => { c.style.opacity = 0; }, 950);
-}
-
-/* ================= экраны ================= */
-function pauseGame(){
-  document.exitPointerLock();
-  $('pause').classList.remove('hidden');
-}
-function resumeGame(){
-  $('pause').classList.add('hidden');
-  $('settings').classList.add('hidden');
-  renderer.domElement.requestPointerLock();
-}
-
-let settingsFrom = 'menu';
-function openSettings(from){
-  settingsFrom = from;
-  $('menu').classList.add('hidden');
-  $('pause').classList.add('hidden');
-  $('skins').classList.add('hidden');
-  $('settings').classList.remove('hidden');
-  syncSettingsUI();
-}
-function closeSettings(){
-  $('settings').classList.add('hidden');
-  $(settingsFrom).classList.remove('hidden');
-}
-
-/* ---------- магазин скинов ---------- */
-let skinsFrom = 'menu';
-function openSkins(from){
-  skinsFrom = from;
-  $('menu').classList.add('hidden');
-  $('pause').classList.add('hidden');
-  $('settings').classList.add('hidden');
-  $('skins').classList.remove('hidden');
-  refreshSkinShop();
-}
-function closeSkins(){
-  $('skins').classList.add('hidden');
-  $(skinsFrom).classList.remove('hidden');
-}
-
-const hex = c => '#' + c.toString(16).padStart(6, '0');
-const skinList = $('skinList');
-const SHOP_PAGE = 48;
-let shopFilter = '';
-let shopShown = SHOP_PAGE;
-
-function shopMatches(){
-  const q = shopFilter.trim().toUpperCase();
-  if (!q) return SKINS;
-  return SKINS.filter(s => s.name.toUpperCase().includes(q) || String(s.mult).includes(q) || s.id.toUpperCase().includes(q));
-}
-
-function buildSkinRow(s){
-  const owned = getOwned();
-  const isOwned = owned.includes(s.id);
-  const isEq = s.id === getSkinId();
-  const row = document.createElement('div');
-  row.className = 'skinRow' + (isEq ? ' equipped' : '') + (!isOwned ? ' locked' : '');
-  row.innerHTML = `
-    <div class="swatch" style="background:linear-gradient(135deg, ${hex(s.body)} 0 55%, ${hex(s.accent)} 55% 100%)"></div>
-    <div class="skinInfo">
-      <span class="skinName">${s.name}</span>
-      <span class="skinDesc">${s.desc}</span>
-    </div>
-    <span class="mult">x${fmtNum(s.mult)}</span>
-    <button></button>`;
-  const btn = row.querySelector('button');
-  const nameEl = row.querySelector('.skinName');
-  const descEl = row.querySelector('.skinDesc');
-  if (s.secret && !isOwned){
-    nameEl.textContent = '? ? ?';
-    descEl.textContent = 'Секретный скин: найди сломанное дерево в ДОЛИНЕ.';
-  }
-  btn.disabled = isEq || (s.secret && !isOwned);
-  btn.textContent = isEq ? 'НАДЕТО'
-    : (isOwned ? 'НАДЕТЬ'
-    : (s.secret ? 'СЕКРЕТ' : 'КУПИТЬ ' + fmtMoney(s.price)));
-  if (!s.secret) btn.title = fmtNum(s.price) + ' монет';
-  btn.onclick = () => {
-    const own = getOwned();
-    if (s.secret && !own.includes(s.id)){ toast('СЕКРЕТ: НАЙДИ В ДОЛИНЕ'); return; }
-    if (own.includes(s.id)){
-      setSkinId(s.id); equipSkin(s.id); refreshSkinShop(); updateHud();
-      toast('СКИН: ' + s.name + '  x' + fmtNum(s.mult));
-    } else {
-      if (getCoins() < s.price){ toast('НЕ ХВАТАЕТ МОНЕТ'); return; }
-      setCoins(getCoins() - s.price);
-      own.push(s.id); setOwned(own);
-      setSkinId(s.id); equipSkin(s.id); refreshSkinShop(); updateHud();
-      toast('КУПЛЕНО: ' + s.name + '  x' + fmtNum(s.mult));
-    }
-  };
-  return row;
-}
-
-function renderShop(){
-  const list = shopMatches();
-  const slice = list.slice(0, shopShown);
-  const scroll = skinList.scrollTop;
-  skinList.innerHTML = '';
-  slice.forEach(s => skinList.appendChild(buildSkinRow(s)));
-  skinList.scrollTop = scroll;
-  $('skinCount').textContent = slice.length + ' из ' + list.length + ' · всего ' + SKINS.length;
-  const more = $('skinMore');
-  more.style.display = list.length > shopShown ? '' : 'none';
-  more.textContent = 'ПОКАЗАТЬ ЕЩЁ (+' + Math.min(SHOP_PAGE, list.length - shopShown) + ')';
-}
-
-function refreshSkinShop(){
-  $('coinBalance').textContent = fmtMoney(getCoins());
-  $('skinHint').textContent = SKINS.length + ' СКИНОВ · СПИСОК ПО ВОЗРАСТАНИЮ МНОЖИТЕЛЯ';
-  renderShop();
-}
-
-$('skinSearch').addEventListener('input', e => { shopFilter = e.target.value; shopShown = SHOP_PAGE; renderShop(); });
-$('skinMore').onclick = () => { shopShown += SHOP_PAGE; renderShop(); };
-
-/* ---------- карты и уровни в меню ---------- */
-const mapList = $('mapList');
-const diffList = $('diffList');
-let levelRows = [];
-
-MAPS.forEach(m => {
-  const b = document.createElement('button');
-  b.className = 'mapCard';
-  b.innerHTML = `<span class="mapName">${m.name}</span><span class="mapDesc">${m.desc}</span>`;
-  b.onclick = () => selectMap(m);
-  mapList.appendChild(b);
-  m.card = b;
-});
-
-function renderLevels(){
-  const map = MAPS.find(x => x.id === SET.map) || MAPS[0];
-  diffList.innerHTML = '';
-  levelRows = [];
-  map.levels.forEach((L, i) => {
-    const row = document.createElement('button');
-    row.className = 'diffRow';
-    row.innerHTML = `<span class="diffTop"><span class="diffName">${L.name}</span>
-                      <span class="diffStars">${starsOf(L.stars)}</span></span>
-                    <span class="diffNote">${L.note}</span>`;
-    row.onclick = () => selectLevel(map, i);
-    diffList.appendChild(row);
-    levelRows.push(row);
-  });
-  const title = $('diffMapName');
-  if (title) title.textContent = map.name;
-}
-
-function syncMapSelection(){
-  const map = MAPS.find(x => x.id === SET.map) || MAPS[0];
-  MAPS.forEach(x => x.card.classList.toggle('selected', x.id === map.id));
-  levelRows.forEach((r, i) => r.classList.toggle('selected', i === SET.level));
-}
-
-function selectMap(m){
-  SET.map = m.id; saveSettings();
-  renderLevels();
-  syncMapSelection();
-  buildMap(m, SET.level);
-}
-
-function selectLevel(map, i){
-  SET.level = i; saveSettings();
-  syncMapSelection();
-  buildMap(map, i);
-}
-
-/* ---------- настройки: UI ---------- */
-function syncSettingsUI(){
-  $('setSens').value = SET.sens;
-  $('setSensVal').textContent = Number(SET.sens).toFixed(2);
-  $('setFov').value = SET.fov;
-  $('setFovVal').textContent = SET.fov + '°';
-  $('setInvert').checked = SET.invertY;
-  $('setShake').checked = SET.shake;
-  $('setQuality').value = SET.quality;
-  $('setMode').value = SET.mode;
-}
-
-$('setSens').oninput = e => { SET.sens = +e.target.value; $('setSensVal').textContent = SET.sens.toFixed(2); applySettings(); saveSettings(); };
-$('setFov').oninput  = e => { SET.fov = +e.target.value;  $('setFovVal').textContent = SET.fov + '°';  applySettings(); saveSettings(); };
-$('setInvert').onchange = e => { SET.invertY = e.target.checked; saveSettings(); };
-$('setShake').onchange  = e => { SET.shake = e.target.checked;  saveSettings(); };
-$('setQuality').onchange = e => { SET.quality = e.target.value; applySettings(); saveSettings(); };
-$('setMode').onchange = e => { SET.mode = e.target.value; state.mode = SET.mode; saveSettings(); updateHud(); };
-$('settingsReset').onclick = () => {
-  SET = Object.assign({}, DEFAULT_SET);
-  applySettings(); saveSettings(); syncSettingsUI();
-  renderLevels();
-  syncMapSelection();
-  buildMap(MAPS.find(m => m.id === SET.map) || MAPS[0], SET.level);
-};
-
-$('startBtn').onclick = () => {
-  $('menu').classList.add('hidden');
-  $('settings').classList.add('hidden');
-  state.started = true;
-  state.time = 0;
-  state.mode = SET.mode;
-  resetDrone();
-  renderer.domElement.requestPointerLock();
-  toast(currentLvl.name + ' — ЛЕТИ ЧЕРЕЗ ЖЁЛТОЕ КОЛЬЦО');
-};
-$('settingsBtn').onclick = () => openSettings('menu');
-$('skinsBtn').onclick = () => openSkins('menu');
-$('pauseSkins').onclick = () => openSkins('pause');
-$('skinsBack').onclick = closeSkins;
-$('settingsBack').onclick = closeSettings;
-$('resumeBtn').onclick = resumeGame;
-$('pauseSettings').onclick = () => openSettings('pause');
-$('toMenuBtn').onclick = () => {
-  $('pause').classList.add('hidden');
-  $('settings').classList.add('hidden');
-  $('menu').classList.remove('hidden');
-  state.started = false;
-  resetDrone();
-};
-
-document.addEventListener('pointerlockchange', () => {
-  if (document.pointerLockElement !== renderer.domElement && state.started && !state.crashed){
-    setTimeout(() => {
-      if (document.pointerLockElement !== renderer.domElement &&
-          $('settings').classList.contains('hidden') &&
-          $('pause').classList.contains('hidden')) pauseGame();
-    }, 100);
-  } else if (document.pointerLockElement === renderer.domElement){
-    $('pause').classList.add('hidden');
-    $('settings').classList.add('hidden');
-    $('skins').classList.add('hidden');
-    $('menu').classList.add('hidden');
-  }
-});
-
-/* ================= запуск ================= */
-applySettings();
-syncSettingsUI();
-const startMap = MAPS.find(m => m.id === SET.map) || MAPS[0];
-SET.map = startMap.id;
-SET.level = Math.min(Math.max(parseInt(SET.level, 10) || 1, 0), startMap.levels.length - 1);
-renderLevels();
-syncMapSelection();
-buildMap(startMap, SET.level);
-state.mode = SET.mode;
-updateHud();
-
-/* ================= цикл ================= */
-const clock = new THREE.Clock();
-let camShake = 0;
-const tmpBack = new THREE.Vector3(), tmpLook = new THREE.Vector3(), tmpTarget = new THREE.Vector3();
-
-function animate(){
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const running = state.started && !state.crashed && document.pointerLockElement === renderer.domElement;
-
-  if (running){
-    state.time += dt;
-    updateInput(dt);
-    physics(dt);
-    checkRings();
-    checkSecret();
-  } else if (!state.started){
-    const t = performance.now()*0.00012;
-    camera.position.set(Math.cos(t)*95, 40, Math.sin(t)*95);
-    camera.lookAt(0, 14, 0);
-    if (camera.fov !== baseFov){ camera.fov = baseFov; camera.updateProjectionMatrix(); }
-  }
-
-  const spd = state.vel.length();
-  animateSecret(dt);
-  const targetShake = SET.shake
-    ? Math.max(0, spd - 12) * 0.0013 + (hitFlash > 0 ? 0.03 : 0)
-    : 0;
-  camShake += (targetShake - camShake) * Math.min(1, dt*8);
-  hitFlash = Math.max(0, hitFlash - dt*3);
-  $('damage').style.opacity = Math.min(1, hitFlash);
-
-  if (state.started){
-    drone.updateMatrixWorld();
-    if (state.camMode === 'CHASE'){
-      const back = tmpBack.set(0, 0.85, -2.9).applyQuaternion(drone.quaternion);
-      camera.position.copy(state.pos).add(back);
-      const look = tmpLook.set(0, 0.15, 4).applyQuaternion(drone.quaternion);
-      camera.lookAt(tmpTarget.copy(state.pos).add(look));
-    } else {
-      const eye = EYE.clone().applyQuaternion(drone.quaternion).add(state.pos);
-      camera.position.copy(eye);
-      camera.quaternion.copy(drone.quaternion).multiply(q180Y);
-    }
-    if (camShake > 0.001){
-      camera.position.x += (Math.random()-.5)*camShake;
-      camera.position.y += (Math.random()-.5)*camShake;
-      camera.position.z += (Math.random()-.5)*camShake;
-      camera.rotation.z += (Math.random()-.5)*camShake*0.3;
-    }
-    const targetFov = baseFov + Math.min(25, spd*0.42);
-    camera.fov += (targetFov - camera.fov) * Math.min(1, dt*4);
-    camera.updateProjectionMatrix();
-
-    const nx = RINGS[state.ringIdx];
-    if (nx) nx.mesh.scale.setScalar(1 + Math.sin(performance.now()*0.006)*0.12);
-
-    hudAcc += dt;
-    if (hudAcc > 0.08){ hudAcc = 0; updateHud(); }
-  }
-
-  renderer.render(scene, camera);
-}
-animate();
-</script>
-</body>
-</html>
